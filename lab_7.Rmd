@@ -1,0 +1,210 @@
+---
+title: "Lab 7"
+author: "Anne-Marie Parkinson"
+date: "February 20, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = F,
+                      warning = F)
+```
+
+# load packages
+```{r}
+
+#general
+library(tidyverse)
+library(here)
+library(janitor)
+library(plotly)
+
+#spatial maps
+library(tmap)
+library(maptools)
+library(sf)
+library(sp)
+library(spatstat)
+library(raster)
+
+#cluster analysis
+library(NbClust)
+library(cluster)
+library(factoextra)
+library(dendextend)
+library(ggdendro)
+```
+
+
+# load data
+```{r}
+
+#species data
+voles <- read_sf(dsn = here("data","redtreevoledata"), 
+                 layer = "ds033") %>% 
+  dplyr::select(COUNTY) %>% 
+  filter(COUNTY == "HUM") %>% 
+  st_transform(crs = 4326)
+
+st_crs(voles) # check projection
+# hUmbolt county layer
+humboldt <- read_sf(dsn = here("data", "redtreevoledata"), layer = "california_county_shape_file", crs = 4326) %>% 
+  filter(NAME == "Humboldt") %>% 
+  dplyr::select(NAME)
+  
+st_crs(humboldt) # check projection
+  
+# used two different crs methods. Depends on whether there is a crs assigned in the original dat or not, but the latter method works for either situation. 
+
+```
+
+```{r}
+#initial visualization of the data
+plot(voles)
+plot(humboldt)
+
+# tmap
+tm_shape(humboldt) +
+  tm_fill() +
+  tm_shape(voles) +
+  tm_dots(size = 0.2)
+
+ggplot() +
+  geom_sf(data = humboldt) +
+  geom_sf(data = voles)
+
+```
+
+#convert vole events and humboldt polygon to point pattern + window
+
+```{r}
+voles_sp <- as(voles, "Spatial") #ensure R recognizes the voles data set as spatial data. Some functions dont like sf data
+
+#voles_ppp <- as(voles_sp, "ppp") # errors with package, allison will update later
+
+```
+
+# cluser analysis
+
+## K means
+
+```{r}
+#clean data
+iris_nice <- iris %>% 
+  clean_names()
+
+# explore data
+ggplot(iris_nice) +
+  geom_point(aes(x = petal_length, y = petal_width, color = species))
+
+# we think it looks like there are 3 clusters
+# ask R how many clusters it thinks there are
+number_est <- NbClust(iris_nice[1:4], # the brackets tells R to only conisder data in columns 1-4
+                      min.nc = 2,
+                      max.nc = 10,
+                      method = "kmeans") # use ?NbClust to see all the diff methods that can be used
+
+
+```
+
+
+graph output = count of how many algorithms thought the data had x number of clusters. Here the algorithms think 2 groups is most likley, but R is NO substitute for assessing the data visually yourself and we think that sicne there are 3 species 3 clusters make sense
+
+
+```{r}
+# run kmeans
+iris_km <- kmeans(iris_nice[1:4], 3)
+
+# use iris_km$cluster to determine what cluster R thinks each observation belongs to
+```
+size outputs have to add up to 100
+
+```{r}
+# bind the cluster number together with the original data
+
+iris_cl <- data.frame(iris_nice, cluster_no = factor(iris_km$cluster)) # can also use as.factor
+
+# plot 
+ggplot(iris_cl) +
+  geom_point(aes(x = sepal_length, y = sepal_width, color = cluster_no))
+
+```
+
+```{r}
+plot_ly(x = iris_cl$petal_length,
+        y = iris_cl$petal_width,
+        z = iris_cl$sepal_width,
+        color = iris_cl$cluster_no,
+        type = "scatter3d"
+        )
+#allisons code
+plot_ly(x = iris_cl$petal_length, 
+        y = iris_cl$petal_width, 
+        z = iris_cl$sepal_width, 
+        type = "scatter3d", 
+        color = iris_cl$cluster_no, 
+        symbol = ~iris_cl$species,
+        marker = list(size = 3),
+        colors = "Set1")
+```
+
+## Hierarchical cluster analysis
+
+Relevant functions:
+
+stats::hclust() - agglomerative hierarchical clustering
+cluster::diana() - divisive hierarchical clustering
+
+```{r}
+
+# load data
+wb_env <- read_csv(here("data", "wb_env.csv")) 
+
+#sub-data: only keep top 20 emitters
+wb_ghg_20 <- wb_env %>% 
+  arrange(-ghg) %>% 
+  head(20)
+
+# scale data so all variables are on the same scale
+wb_scaled <- as.data.frame(scale(wb_ghg_20[3:7]))
+
+# Update data frame to add rownames (country name)
+rownames(wb_scaled) <- wb_ghg_20$name
+
+```
+
+### find distances(create dissimilaraity matrix)
+```{r}
+#calc euclidean
+diss <- dist(wb_scaled, method = "euclidean")
+
+# use euclidean distances to do some complete agglomerate clustering
+hc_complete <- hclust(diss, method = "complete")
+
+# plot outputs
+plot(hc_complete)
+
+# nicer plot
+ggdendrogram(hc_complete, rotate = T)
+
+```
+things clustered closer on the dendeogram = closer relation in multivariate space, countries further apart = more dissimilar
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
